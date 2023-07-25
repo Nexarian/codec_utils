@@ -23,6 +23,7 @@ slice_type  name of slice
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -66,6 +67,220 @@ get_next_frame(int fd, char* data, int* bytes, int* width, int* height)
     return 0;
 }
 
+
+uint32_t sps_parser_offset;
+
+uint8_t sps_parser_base64_table[65] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+size_t sps_parser_base64_decode(char *buffer) {
+
+	uint8_t dtable[256], block[4], tmp, pad = 0;
+	size_t i, count = 0, pos = 0, len = strlen(buffer);
+
+	memset(dtable, 0x80, 256);
+	for (i = 0; i < sizeof(sps_parser_base64_table) - 1; i++) {
+		dtable[sps_parser_base64_table[i]] = (unsigned char) i;
+	}
+
+	dtable['='] = 0;
+
+	for (i = 0; i < len; i++) {
+		if (dtable[buffer[i]] != 0x80) {
+			count++;
+		}
+	}
+
+	if (count == 0 || count % 4) return 0;
+
+
+	count = 0;
+	for (i = 0; i < len; i++) {
+		tmp = dtable[buffer[i]];
+		if (tmp == 0x80) continue;
+
+		if (buffer[i] == '=') pad++;
+		block[count] = tmp;
+		count++;
+		if (count == 4) {
+
+			buffer[pos++] = (block[0] << 2) | (block[1] >> 4);
+			buffer[pos++] = (block[1] << 4) | (block[2] >> 2);
+			buffer[pos++] = (block[2] << 6) | block[3];
+
+			count = 0;
+			if (pad) {
+
+				if (pad == 1) pos--;
+				else if (pad == 2) pos -= 2;
+				else return 0;
+
+				break;
+			}
+		}
+	}
+
+	return pos;
+}
+
+uint32_t sps_parser_read_bits(char *buffer, uint32_t count) {
+	uint32_t result = 0;
+	uint8_t index = (sps_parser_offset / 8);
+	uint8_t bitNumber = (sps_parser_offset - (index * 8));
+	uint8_t outBitNumber = count - 1;
+	for (uint8_t c = 0; c < count; c++) {
+		if (buffer[index] << bitNumber & 0x80) {
+			result |= (1 << outBitNumber);
+		}
+		if (++bitNumber > 7) { bitNumber = 0; index++; }
+		outBitNumber--;
+	}
+	sps_parser_offset += count;
+	return result;
+}
+
+uint32_t sps_parser_read_ueg(char* buffer) {
+    uint32_t bitcount = 0;
+
+    for (;;) {
+        if (sps_parser_read_bits(buffer, 1) == 0)
+        {
+	        bitcount++;
+        }
+        else
+        {
+            // bitOffset--;
+            break;
+        }
+    }
+
+    // bitOffset --;
+    uint32_t result = 0;
+    if (bitcount)
+    {
+        uint32_t val = sps_parser_read_bits(buffer, bitcount);
+        result = (uint32_t) ((1 << bitcount) - 1 + val);
+    }
+
+    return result;
+}
+
+int32_t sps_parser_read_eg(char* buffer) {
+	uint32_t value = sps_parser_read_ueg(buffer);
+	if (value & 0x01) {
+		return (value + 1) / 2;
+	} else {
+		return -(value / 2);
+	}
+}
+
+void sps_parser_skipScalingList(char* buffer, uint8_t count) {
+	uint32_t deltaScale, lastScale = 8, nextScale = 8;
+	for (uint8_t j = 0; j < count; j++) {
+		if (nextScale != 0) {
+			deltaScale = sps_parser_read_eg(buffer);
+			nextScale = (lastScale + deltaScale + 256) % 256;
+		}
+		lastScale = (nextScale == 0 ? lastScale : nextScale);
+	}
+}
+
+uint32_t sps_parser(char *buffer, struct sps_t* sps)
+{
+	sps_parser_offset = 0;
+	sps_parser_base64_decode(buffer);
+
+    sps->forbidden_zero_bit = sps_parser_read_bits(buffer, 1);
+    sps->nal_ref_idc   = sps_parser_read_bits(buffer, 2);
+    sps->nal_unit_type = sps_parser_read_bits(buffer, 5);
+
+	sps->profile_idc = sps_parser_read_bits(buffer, 8);
+
+    sps->constraint_set0_flag  = sps_parser_read_bits(buffer, 1);
+    sps->constraint_set1_flag  = sps_parser_read_bits(buffer, 1);
+    sps->constraint_set2_flag  = sps_parser_read_bits(buffer, 1);
+    sps->constraint_set3_flag  = sps_parser_read_bits(buffer, 1);
+    sps->reserved_zero_4bits   = sps_parser_read_bits(buffer, 4);
+    sps->level_idc             = sps_parser_read_bits(buffer, 8);
+
+	sps->seq_parameter_set_id = sps_parser_read_ueg(buffer);
+
+	if (sps->profile_idc == 100 || sps->profile_idc == 110 || sps->profile_idc == 122 ||
+		sps->profile_idc == 244 || sps->profile_idc == 44 || sps->profile_idc == 83 ||
+		sps->profile_idc == 86 || sps->profile_idc == 118 || sps->profile_idc == 128)
+    {
+        sps->chroma_format_idc = sps_parser_read_ueg(buffer);
+		if (sps->chroma_format_idc == 3)
+        {
+            sps->separate_color_plane_flag = sps_parser_read_bits(buffer, 1);
+        }
+		sps->bit_depth_luma_minus8 = sps_parser_read_ueg(buffer);
+		sps->bit_depth_chroma_minus8 = sps_parser_read_ueg(buffer);
+		sps->qpprime_y_zero_transform_bypass_flag = sps_parser_read_bits(buffer, 1);
+        sps->seq_scaling_matrix_present_flag = sps_parser_read_bits(buffer, 1);
+		if (sps->seq_scaling_matrix_present_flag)
+        {
+			for (uint8_t i = 0; i < ((sps->chroma_format_idc != 3) ? 8 : 12); i++)
+            {
+				if (sps_parser_read_bits(buffer, 1))
+                {
+					if (i < 6)
+                    {
+						sps_parser_skipScalingList(buffer, 16);
+					}
+                    else
+                    {
+						sps_parser_skipScalingList(buffer, 64);
+					}
+				}
+			}
+		}
+	}
+
+	sps->log2_max_frame_num_minus4 = sps_parser_read_ueg(buffer);
+	sps->pic_order_cnt_type = sps_parser_read_ueg(buffer);
+
+	if (sps->pic_order_cnt_type == 0)
+    {
+		sps->log2_max_pic_order_cnt_lsb_minus4 = sps_parser_read_ueg(buffer);
+	}
+    else if (sps->pic_order_cnt_type == 1)
+    {
+		sps->delta_pic_order_always_zero_flag = sps_parser_read_bits(buffer, 1);
+		sps->offset_for_non_ref_pic = sps_parser_read_eg(buffer);
+		sps->offset_for_top_to_bottom_field = sps_parser_read_eg(buffer);
+        sps->num_ref_frames_in_pic_order_cnt_cycle = sps_parser_read_ueg(buffer);
+		for (uint32_t i = 0; i < sps->num_ref_frames_in_pic_order_cnt_cycle; ++i)
+        {
+			sps_parser_read_eg(buffer);
+		}
+	}
+
+	sps->num_ref_frames = sps_parser_read_ueg(buffer);
+	sps->gaps_in_frame_num_value_allowed_flag = sps_parser_read_bits(buffer, 1);
+	sps->pic_width_in_mbs_minus_1 = sps_parser_read_ueg(buffer);
+	sps->pic_height_in_map_units_minus_1 = sps_parser_read_ueg(buffer);
+	sps->frame_mbs_only_flag = sps_parser_read_bits(buffer, 1);
+	if (!sps->frame_mbs_only_flag)
+    {
+        sps->mb_adaptive_frame_field_flag = sps_parser_read_bits(buffer, 1);
+    }
+	sps->direct_8x8_inference_flag = sps_parser_read_bits(buffer, 1);
+    sps->frame_cropping_flag = sps_parser_read_bits(buffer, 1);
+	if (sps->frame_cropping_flag)
+    {
+		sps->frame_crop_left_offset = sps_parser_read_ueg(buffer);
+		sps->frame_crop_right_offset = sps_parser_read_ueg(buffer);
+		sps->frame_crop_top_offset = sps_parser_read_ueg(buffer);
+		sps->frame_crop_bottom_offset = sps_parser_read_ueg(buffer);
+	}
+    sps->vui_prameters_present_flag = sps_parser_read_bits(buffer, 1);
+
+    sps->width = (((sps->pic_width_in_mbs_minus_1 + 1) * 16) - sps->frame_crop_left_offset * 2 - sps->frame_crop_right_offset * 2);
+    sps->height = ((2 - sps->frame_mbs_only_flag) * (sps->pic_height_in_map_units_minus_1 + 1) * 16) - ((sps->frame_mbs_only_flag ? 2 : 4) * (sps->frame_crop_top_offset + sps->frame_crop_bottom_offset));
+
+    return 0;
+}
+
 static int
 process_sps(char* data, int bytes)
 {
@@ -74,7 +289,8 @@ process_sps(char* data, int bytes)
 
     bits_init(&bits, data, bytes);
     memset(&sps, 0, sizeof(sps));
-    parse_sps(&bits, &sps);
+    //parse_sps(&bits, &sps);
+    sps_parser(data, &sps);
 
     printf("    bits.error                              %d\n", bits.error);
     printf("    bytes left                              %d\n", (int)(bits.data_bytes - bits.offset));
@@ -223,6 +439,7 @@ main(int argc, char** argv)
                             break;
                         case 7: /* Sequence parameter set */
                             hexdump(rbsp, rbsp_bytes);
+                            //printf("width = %d\nheight = %d\n", dimensions >> 16, dimensions & 0xFFFF);
                             process_sps(rbsp, rbsp_bytes);
                             break;
                         case 8: /* Picture parameter set */

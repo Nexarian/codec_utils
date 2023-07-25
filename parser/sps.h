@@ -66,6 +66,12 @@ struct sps_t
     int constraint_set3_flag;                   /* u(1) */
     int reserved_zero_4bits;                    /* u(4) */
     int level_idc;                              /* u(8) */
+    int chroma_format_idc;                      /* ue(v) */
+    int separate_color_plane_flag;              /* u(1) */
+    int bit_depth_luma_minus8;                  /* ue(v) */
+    int bit_depth_chroma_minus8;                /* ue(v) */
+    int qpprime_y_zero_transform_bypass_flag;   /* u(1) */
+    int seq_scaling_matrix_present_flag;        /* u(1) */
     int seq_parameter_set_id;                   /* ue(v) */
     int log2_max_frame_num_minus4;              /* ue(v) */
     int pic_order_cnt_type;                     /* ue(v) */
