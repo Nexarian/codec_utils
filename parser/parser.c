@@ -84,18 +84,22 @@ size_t sps_parser_base64_decode(char *buffer) {
 
 	dtable['='] = 0;
 
-	for (i = 0; i < len; i++) {
-		if (dtable[buffer[i]] != 0x80) {
+	for (i = 0; i < len; i++)
+    {
+		if (dtable[(int)buffer[i]] != 0x80)
+        {
 			count++;
 		}
 	}
 
-	if (count == 0 || count % 4) return 0;
-
+	if (count == 0 || count % 4)
+    {
+        return 0;
+    }
 
 	count = 0;
 	for (i = 0; i < len; i++) {
-		tmp = dtable[buffer[i]];
+		tmp = dtable[(int)buffer[i]];
 		if (tmp == 0x80) continue;
 
 		if (buffer[i] == '=') pad++;
@@ -289,8 +293,8 @@ process_sps(char* data, int bytes)
 
     bits_init(&bits, data, bytes);
     memset(&sps, 0, sizeof(sps));
-    //parse_sps(&bits, &sps);
-    sps_parser(data, &sps);
+    parse_sps(&bits, &sps);
+    //sps_parser(data, &sps);
 
     printf("    bits.error                              %d\n", bits.error);
     printf("    bytes left                              %d\n", (int)(bits.data_bytes - bits.offset));

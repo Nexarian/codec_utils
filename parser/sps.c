@@ -5,6 +5,7 @@
 
 #include "bits.h"
 #include "sps.h"
+#include <stdint.h>
 
 void
 hexdump(const void *p, int len);
@@ -119,6 +120,17 @@ parse_vui(struct bits_t* bits, struct vui_t* vui)
     return 0;
 }
 
+void skipScalingList(char* buffer, uint8_t count) {
+	uint32_t deltaScale, lastScale = 8, nextScale = 8;
+	for (uint8_t j = 0; j < count; j++) {
+		if (nextScale != 0) {
+			deltaScale = in_seint(buffer);
+			nextScale = (lastScale + deltaScale + 256) % 256;
+		}
+		lastScale = (nextScale == 0 ? lastScale : nextScale);
+	}
+}
+
 int
 parse_sps(struct bits_t* bits, struct sps_t* sps)
 {
@@ -137,6 +149,38 @@ parse_sps(struct bits_t* bits, struct sps_t* sps)
     sps->level_idc                                      = in_uint(bits, 8);
     sps->seq_parameter_set_id                           = in_ueint(bits);
     /* some alpha fields can be here */
+    if (sps->profile_idc == 100 || sps->profile_idc == 110 || sps->profile_idc == 122 ||
+		sps->profile_idc == 244 || sps->profile_idc == 44 || sps->profile_idc == 83 ||
+		sps->profile_idc == 86 || sps->profile_idc == 118 || sps->profile_idc == 128)
+    {
+        sps->chroma_format_idc = in_ueint(bits);
+		if (sps->chroma_format_idc == 3)
+        {
+            sps->separate_color_plane_flag = in_uint(bits, 1);
+        }
+		sps->bit_depth_luma_minus8 = in_ueint(bits);
+		sps->bit_depth_chroma_minus8 = in_ueint(bits);
+		sps->qpprime_y_zero_transform_bypass_flag = in_uint(bits, 1);
+        sps->seq_scaling_matrix_present_flag = in_uint(bits, 1);
+		if (sps->seq_scaling_matrix_present_flag)
+        {
+			for (uint8_t i = 0; i < ((sps->chroma_format_idc != 3) ? 8 : 12); i++)
+            {
+				if (in_uint(bits, 1))
+                {
+					if (i < 6)
+                    {
+						skipScalingList(bits, 16);
+					}
+                    else
+                    {
+						skipScalingList(bits, 64);
+					}
+				}
+			}
+		}
+	}
+
     sps->log2_max_frame_num_minus4                      = in_ueint(bits);
     sps->pic_order_cnt_type                             = in_ueint(bits);
     if (sps->pic_order_cnt_type == 0)
