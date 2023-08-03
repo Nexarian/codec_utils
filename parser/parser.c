@@ -29,6 +29,7 @@ slice_type  name of slice
 
 #include "bits.h"
 #include "sps.h"
+#include "pps.h"
 #include "utils.h"
 
 static int
@@ -149,6 +150,30 @@ process_sps(char* data, int bytes)
 static int
 process_pps(const char* data, int bytes)
 {
+    struct pps_t pps;
+    struct bits_t bits;
+
+    bits_init(&bits, data, bytes);
+    memset(&pps, 0, sizeof(pps));
+    parse_pps(&bits, &pps);
+
+    printf("-------------------------------------------------------------------------------\n");
+    printf("[ PPS ]\n");
+    printf("        pic_parameter_set_id                   %d\n", pps.pic_parameter_set_id);
+    printf("        seq_parameter_set_id                   %d\n", pps.seq_parameter_set_id);
+    printf("        entropy_coding_mode_flag               %d\n", pps.entropy_coding_mode_flag);
+    printf("        pic_order_present_flag                 %d\n", pps.pic_order_present_flag);
+    printf("        num_slice_groups_minus1                %d\n", pps.num_slice_groups_minus1);
+    printf("        num_ref_idx_l0_active_minus1           %d\n", pps.num_ref_idx_l0_active_minus1);
+    printf("        num_ref_idx_l1_active_minus1           %d\n", pps.num_ref_idx_l1_active_minus1);
+    printf("        weighted_pred_flag                     %d\n", pps.weighted_pred_flag);
+    printf("        weighted_bipred_idc                    %d\n", pps.weighted_bipred_idc);
+    printf("        pic_init_qp_minus26                    %d\n", pps.pic_init_qp_minus26);
+    printf("        pic_init_qs_minus26                    %d\n", pps.pic_init_qs_minus26);
+    printf("        chroma_qp_index_offset                 %d\n", pps.chroma_qp_index_offset);
+    printf("        deblocking_filter_control_present_flag %d\n", pps.deblocking_filter_control_present_flag);
+    printf("        constrained_intra_pred_flag            %d\n", pps.constrained_intra_pred_flag);
+    printf("        redundant_pic_cnt_present_flag         %d\n", pps.redundant_pic_cnt_present_flag);
     return 0;
 }
 

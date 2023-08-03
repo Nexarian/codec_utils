@@ -1,4 +1,3 @@
-
 #ifndef _SPS_H_
 #define _SPS_H_
 
@@ -93,6 +92,28 @@ struct sps_t
     int width;
     int height;
 };
+
+// // IDR Sub
+// struct IDR_SubFunction__Dec_Ref_Pic_Marking
+// {
+//     public int no_output_of_prior_pics_flag;
+//     public int long_term_reference_flag;
+// };
+
+// struct idr_t
+// {
+//     int first_mb_in_slice;
+//     int slice_type;
+//     int pic_parameter_set_id;
+//     int frame_num;
+//     int field_pic_flag;
+//     int bottom_field_flag;
+//     int idr_pic_id;
+//     int pic_order_cnt_lsb;
+//     int delta_pic_order_cnt_bottom;
+//     int slice_qp_delta;
+//     struct IDR_SubFunction__Dec_Ref_Pic_Marking dec_ref_pic_marking;
+// };
 
 int
 parse_sps(struct bits_t* bits, struct sps_t* sps);

@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -186,4 +185,3 @@ parse_sps(struct bits_t* bits, struct sps_t* sps)
 
     return 0;
 }
-
