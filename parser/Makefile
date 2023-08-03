@@ -1,5 +1,5 @@
 
-OBJS=bits.o sps.o utils.o
+OBJS=bits.o sps.o pps.o utils.o
 
 CFLAGS=-O2 -Wall
 
@@ -17,4 +17,3 @@ patch_sps_bit_res_flag: $(OBJS) patch_sps_bit_res_flag.o
 
 clean:
 	rm -f parser patch_sps_bit_res_flag $(OBJS) parser.o patch_sps_bit_res_flag.o
-
